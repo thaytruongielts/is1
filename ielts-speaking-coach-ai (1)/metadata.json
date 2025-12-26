@@ -1,0 +1,7 @@
+{
+  "name": "IELTS Speaking Coach AI",
+  "description": "An interactive AI tutor for IELTS Speaking practice. Record your voice, get instant feedback on grammar and vocabulary, and practice improved versions of your answers.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
