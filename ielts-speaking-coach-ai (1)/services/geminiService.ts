@@ -1,14 +1,19 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { SYSTEM_INSTRUCTION } from "../constants";
 import { Feedback } from "../types";
 
+// QUAN TRỌNG: Sử dụng import.meta.env.VITE_API_KEY cho dự án Vite
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY || '');
+
 export const getIELTSEvaluation = async (audioBase64: string, question: string): Promise<Feedback> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-  
+  const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash", // Sử dụng bản stable mới nhất
+    systemInstruction: SYSTEM_INSTRUCTION,
+  });
+
   const audioPart = {
     inlineData: {
-      mimeType: "audio/webm", // Usually webm from MediaRecorder
+      mimeType: "audio/webm", // Hoặc "audio/mp3" tùy thuộc vào recorder của bạn
       data: audioBase64
     }
   };
@@ -18,50 +23,57 @@ export const getIELTSEvaluation = async (audioBase64: string, question: string):
   };
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: { parts: [audioPart, textPart] },
-      config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
-        responseMimeType: "application/json",
-      },
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [audioPart, textPart] }],
+      generationConfig: {
+        responseMimeType: "application/json" // Bắt buộc trả về JSON
+      }
     });
 
-    const result = JSON.parse(response.text || "{}");
-    return result as Feedback;
+    const response = await result.response;
+    const text = response.text();
+    
+    // Parse JSON an toàn
+    return JSON.parse(text) as Feedback;
+
   } catch (error) {
     console.error("Gemini Error:", error);
-    throw new Error("Failed to process your speaking response. Please try again.");
+    throw new Error("Failed to process your speaking response. Please check your API Key or try again.");
   }
 };
 
 export const getSecondaryCorrection = async (previousFeedback: Feedback, newAudioBase64: string): Promise<Feedback> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
-    
-    const audioPart = {
-      inlineData: {
-        mimeType: "audio/webm",
-        data: newAudioBase64
-      }
-    };
-  
-    const textPart = {
-      text: `I tried to repeat the 'Improved Version' you suggested: "${previousFeedback.improvedVersion}". How did I do? Compare my new audio with your suggestion and give me updated feedback.`
-    };
-  
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: { parts: [audioPart, textPart] },
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          responseMimeType: "application/json",
-        },
-      });
-  
-      return JSON.parse(response.text || "{}") as Feedback;
-    } catch (error) {
-      console.error("Gemini Error:", error);
-      throw new Error("Failed to correct your practice attempt.");
+  const model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    systemInstruction: SYSTEM_INSTRUCTION,
+  });
+
+  const audioPart = {
+    inlineData: {
+      mimeType: "audio/webm",
+      data: newAudioBase64
     }
   };
+
+  const textPart = {
+    text: `I tried to repeat the 'Improved Version' you suggested: "${previousFeedback.improvedVersion}". How did I do? Compare my new audio with your suggestion and give me updated feedback.`
+  };
+
+  try {
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [audioPart, textPart] }],
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    });
+
+    const response = await result.response;
+    const text = response.text();
+
+    return JSON.parse(text) as Feedback;
+
+  } catch (error) {
+    console.error("Gemini Error (Secondary):", error);
+    throw new Error("Failed to correct your practice attempt.");
+  }
+};
